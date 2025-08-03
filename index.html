@@ -176,7 +176,7 @@
         });
 
         async function searchVideos(query, source) {
-            const backendUrl = `https://localhost:3000/api/${source}/search?q=${encodeURIComponent(query)}`;
+            const backendUrl = `https://video-searcher-backend.onrender.com/api/${source}/search?q=${encodeURIComponent(query)}`;
             const response = await fetch(backendUrl);
             if (!response.ok) {
                 const errorData = await response.json();
