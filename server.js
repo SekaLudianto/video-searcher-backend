@@ -55,20 +55,17 @@ app.get('/api/xnxx/search', async (req, res) => {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
                 }).then(response => {
                     const pageHtml = response.data;
-                    const qualities = [];
+                    // PERBAIKAN: Ekstrak semua kualitas dan pilih yang terbaik
                     const highQualityMatch = pageHtml.match(/html5player\.setVideoUrlHigh\('([^']+)'\)/);
                     const lowQualityMatch = pageHtml.match(/html5player\.setVideoUrlLow\('([^']+)'\)/);
-                    const hlsMatch = pageHtml.match(/html5player\.setVideoHLS\('([^']+)'\)/);
+                    
+                    const bestUrl = highQualityMatch ? highQualityMatch[1] : (lowQualityMatch ? lowQualityMatch[1] : null);
 
-                    if (highQualityMatch) qualities.push({ label: 'HD', url: highQualityMatch[1] });
-                    if (lowQualityMatch) qualities.push({ label: 'SD', url: lowQualityMatch[1] });
-                    if (hlsMatch) qualities.push({ label: 'Auto (HLS)', url: hlsMatch[1] });
-
-                    if (qualities.length > 0) {
+                    if (bestUrl) {
                         return {
                             thumbnailUrl: thumbUrl,
-                            qualities: qualities,
-                            previewVideoUrl: lowQualityMatch ? lowQualityMatch[1] : (highQualityMatch ? highQualityMatch[1] : null),
+                            videoUrl: bestUrl, // Kirim satu URL terbaik
+                            previewVideoUrl: lowQualityMatch ? lowQualityMatch[1] : bestUrl,
                             title: $(element).find('.title a').attr('title')
                         };
                     }
@@ -93,7 +90,7 @@ app.get('/api/xnxx/search', async (req, res) => {
     }
 });
 
-// --- PERUBAHAN BARU: Endpoint untuk Narasi Audio ElevenLabs ---
+// --- Endpoint untuk Narasi Audio ElevenLabs ---
 app.get('/api/generate-narration', async (req, res) => {
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
