@@ -6,6 +6,7 @@ const https = require('https');
 const fs = require('fs');
 require('dotenv').config();
 const cheerio = require('cheerio');
+const { ElevenLabsClient } = require('@elevenlabs/elevenlabs-js'); // PERUBAHAN BARU
 
 // Inisialisasi aplikasi Express
 const app = express();
@@ -55,7 +56,6 @@ app.get('/api/xnxx/search', async (req, res) => {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
                 }).then(response => {
                     const pageHtml = response.data;
-                    // PERBAIKAN: Ekstrak semua kualitas dan pilih yang terbaik
                     const highQualityMatch = pageHtml.match(/html5player\.setVideoUrlHigh\('([^']+)'\)/);
                     const lowQualityMatch = pageHtml.match(/html5player\.setVideoUrlLow\('([^']+)'\)/);
                     
@@ -64,7 +64,7 @@ app.get('/api/xnxx/search', async (req, res) => {
                     if (bestUrl) {
                         return {
                             thumbnailUrl: thumbUrl,
-                            videoUrl: bestUrl, // Kirim satu URL terbaik
+                            videoUrl: bestUrl,
                             previewVideoUrl: lowQualityMatch ? lowQualityMatch[1] : bestUrl,
                             title: $(element).find('.title a').attr('title')
                         };
@@ -90,41 +90,33 @@ app.get('/api/xnxx/search', async (req, res) => {
     }
 });
 
-// --- Endpoint untuk Narasi Audio ElevenLabs ---
+// --- PERUBAHAN BARU: Endpoint untuk Narasi Audio ElevenLabs menggunakan Library ---
 app.get('/api/generate-narration', async (req, res) => {
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
         return res.status(500).json({ message: 'Kunci API ElevenLabs tidak diatur di server.' });
     }
 
-    const textToSpeak = "Video sedang diputar.";
-    const voiceId = '21m00Tcm4TlvDq8ikWAM'; // Contoh suara "Rachel"
-    const elevenLabsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
+    const elevenlabs = new ElevenLabsClient({ apiKey });
 
-    console.log("INFO: Menerima permintaan untuk narasi audio...");
+    const textToSpeak = "Video sedang diputar.";
+    const voiceId = 'Rachel'; // Bisa menggunakan nama atau ID
+    
+    console.log("INFO: Menerima permintaan untuk narasi audio via library...");
 
     try {
-        const response = await axios.post(elevenLabsUrl, {
+        const audioStream = await elevenlabs.textToSpeech.stream({
+            voice: voiceId,
             text: textToSpeak,
-            model_id: "eleven_multilingual_v2",
-            voice_settings: {
-                stability: 0.5,
-                similarity_boost: 0.75
-            }
-        }, {
-            headers: {
-                'Content-Type': 'application/json',
-                'xi-api-key': apiKey
-            },
-            responseType: 'stream' // Penting untuk menangani audio
+            model_id: "eleven_multilingual_v2"
         });
 
         // Alirkan audio langsung ke klien
         res.setHeader('Content-Type', 'audio/mpeg');
-        response.data.pipe(res);
+        audioStream.pipe(res);
 
     } catch (error) {
-        console.error("KRITIS: Gagal mengambil audio dari ElevenLabs.", error.response ? error.response.data : error.message);
+        console.error("KRITIS: Gagal mengambil audio dari ElevenLabs.", error.message);
         res.status(500).json({ message: 'Gagal menghasilkan narasi audio.' });
     }
 });
