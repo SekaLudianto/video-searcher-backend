@@ -6,7 +6,6 @@ const https = require('https');
 const fs = require('fs');
 require('dotenv').config();
 const cheerio = require('cheerio');
-const { ElevenLabsClient } = require('@elevenlabs/elevenlabs-js'); // PERUBAHAN BARU
 
 // Inisialisasi aplikasi Express
 const app = express();
@@ -90,35 +89,23 @@ app.get('/api/xnxx/search', async (req, res) => {
     }
 });
 
-// --- PERUBAHAN BARU: Endpoint untuk Narasi Audio ElevenLabs menggunakan Library ---
-app.get('/api/generate-narration', async (req, res) => {
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    if (!apiKey) {
-        return res.status(500).json({ message: 'Kunci API ElevenLabs tidak diatur di server.' });
-    }
+// --- PERBAIKAN: Endpoint untuk Simulasi Subtitle ---
+app.get('/api/generate-subtitle', (req, res) => {
+    console.log("INFO: Menerima permintaan untuk simulasi subtitle.");
+    // Ini adalah contoh konten file VTT (subtitle)
+    const vttContent = `WEBVTT
 
-    const elevenlabs = new ElevenLabsClient({ apiKey });
+00:00:01.000 --> 00:00:05.000
+Ini adalah contoh subtitle otomatis.
 
-    const textToSpeak = "Video sedang diputar.";
-    const voiceId = 'Rachel'; // Bisa menggunakan nama atau ID
-    
-    console.log("INFO: Menerima permintaan untuk narasi audio via library...");
+00:00:06.000 --> 00:00:10.000
+Fitur ini mensimulasikan cara kerja Speech-to-Text API.
 
-    try {
-        const audioStream = await elevenlabs.textToSpeech.stream({
-            voice: voiceId,
-            text: textToSpeak,
-            model_id: "eleven_multilingual_v2"
-        });
-
-        // Alirkan audio langsung ke klien
-        res.setHeader('Content-Type', 'audio/mpeg');
-        audioStream.pipe(res);
-
-    } catch (error) {
-        console.error("KRITIS: Gagal mengambil audio dari ElevenLabs.", error.message);
-        res.status(500).json({ message: 'Gagal menghasilkan narasi audio.' });
-    }
+00:00:11.000 --> 00:00:15.000
+Dalam aplikasi nyata, ini memerlukan layanan cloud berbayar.
+`;
+    res.header('Content-Type', 'text/vtt');
+    res.send(vttContent);
 });
 
 
