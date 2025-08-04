@@ -2,12 +2,13 @@
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+const https = require('https');
+const fs = require('fs');
 require('dotenv').config();
 const cheerio = require('cheerio');
 
 // Inisialisasi aplikasi Express
 const app = express();
-// Gunakan port dari environment variable yang disediakan Render, atau 3000 untuk lokal
 const PORT = process.env.PORT || 3000;
 
 // Gunakan middleware CORS
@@ -15,7 +16,7 @@ app.use(cors());
 
 // --- Implementasi Caching Sederhana ---
 const cache = new Map();
-const CACHE_DURATION_MS = 30 * 60 * 1000; // Cache selama 30 menit
+const CACHE_DURATION_MS = 30 * 60 * 1000;
 
 // --- Endpoint untuk Pencarian XNXX ---
 app.get('/api/xnxx/search', async (req, res) => {
@@ -54,21 +55,25 @@ app.get('/api/xnxx/search', async (req, res) => {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
                 }).then(response => {
                     const pageHtml = response.data;
-                    const videoUrlMatch = pageHtml.match(/html5player\.setVideoUrlHigh\('([^']+)'\)/);
-                    const previewUrlMatch = pageHtml.match(/html5player\.setVideoUrlLow\('([^']+)'\)/);
-                    if (videoUrlMatch && videoUrlMatch[1]) {
+                    const qualities = [];
+                    const highQualityMatch = pageHtml.match(/html5player\.setVideoUrlHigh\('([^']+)'\)/);
+                    const lowQualityMatch = pageHtml.match(/html5player\.setVideoUrlLow\('([^']+)'\)/);
+                    const hlsMatch = pageHtml.match(/html5player\.setVideoHLS\('([^']+)'\)/);
+
+                    if (highQualityMatch) qualities.push({ label: 'HD', url: highQualityMatch[1] });
+                    if (lowQualityMatch) qualities.push({ label: 'SD', url: lowQualityMatch[1] });
+                    if (hlsMatch) qualities.push({ label: 'Auto (HLS)', url: hlsMatch[1] });
+
+                    if (qualities.length > 0) {
                         return {
                             thumbnailUrl: thumbUrl,
-                            videoUrl: videoUrlMatch[1],
-                            previewVideoUrl: previewUrlMatch ? previewUrlMatch[1] : videoUrlMatch[1],
+                            qualities: qualities,
+                            previewVideoUrl: lowQualityMatch ? lowQualityMatch[1] : (highQualityMatch ? highQualityMatch[1] : null),
                             title: $(element).find('.title a').attr('title')
                         };
                     }
                     return null;
-                }).catch(err => {
-                    console.error(`Gagal mengambil detail dari ${fullPageUrl}:`, err.message);
-                    return null;
-                });
+                }).catch(err => null);
                 videoPromises.push(videoPromise);
             }
         });
@@ -79,23 +84,78 @@ app.get('/api/xnxx/search', async (req, res) => {
         console.log(`SUKSES: Ditemukan ${videos.length} video.`);
 
         const responseData = { videos: videos };
-        cache.set(cacheKey, {
-            timestamp: Date.now(),
-            data: responseData
-        });
-
+        cache.set(cacheKey, { timestamp: Date.now(), data: responseData });
         res.json(responseData);
 
     } catch (error) {
         console.error('KRITIS: Terjadi error saat scraping.', error.message);
-        return res.status(500).json({ 
-            message: 'Gagal mengambil data dari sumber.',
-            details: error.message
-        });
+        return res.status(500).json({ message: 'Gagal mengambil data dari sumber.', details: error.message });
     }
 });
 
-// Jalankan server HTTP standar
-app.listen(PORT, () => {
-    console.log(`Server backend berjalan di port ${PORT}`);
+// --- PERUBAHAN BARU: Endpoint untuk Narasi Audio ElevenLabs ---
+app.get('/api/generate-narration', async (req, res) => {
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (!apiKey) {
+        return res.status(500).json({ message: 'Kunci API ElevenLabs tidak diatur di server.' });
+    }
+
+    const textToSpeak = "Video sedang diputar.";
+    const voiceId = '21m00Tcm4TlvDq8ikWAM'; // Contoh suara "Rachel"
+    const elevenLabsUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
+
+    console.log("INFO: Menerima permintaan untuk narasi audio...");
+
+    try {
+        const response = await axios.post(elevenLabsUrl, {
+            text: textToSpeak,
+            model_id: "eleven_multilingual_v2",
+            voice_settings: {
+                stability: 0.5,
+                similarity_boost: 0.75
+            }
+        }, {
+            headers: {
+                'Content-Type': 'application/json',
+                'xi-api-key': apiKey
+            },
+            responseType: 'stream' // Penting untuk menangani audio
+        });
+
+        // Alirkan audio langsung ke klien
+        res.setHeader('Content-Type', 'audio/mpeg');
+        response.data.pipe(res);
+
+    } catch (error) {
+        console.error("KRITIS: Gagal mengambil audio dari ElevenLabs.", error.response ? error.response.data : error.message);
+        res.status(500).json({ message: 'Gagal menghasilkan narasi audio.' });
+    }
 });
+
+
+// --- Menjalankan Server ---
+const startServer = () => {
+    if (process.env.NODE_ENV === 'production') {
+        app.listen(PORT, () => {
+            console.log(`Server backend berjalan di port ${PORT}`);
+        });
+    } else {
+        try {
+            const options = {
+                key: fs.readFileSync('key.pem'),
+                cert: fs.readFileSync('cert.pem'),
+            };
+            https.createServer(options, app).listen(PORT, () => {
+                console.log(`Server backend berjalan di https://localhost:${PORT}`);
+            });
+        } catch (error) {
+            console.error("\nPERINGATAN: Gagal menjalankan server HTTPS. Menjalankan sebagai HTTP.", error.message);
+            console.error("Pastikan file 'key.pem' dan 'cert.pem' ada untuk pengembangan lokal dengan HTTPS.");
+            app.listen(PORT, () => {
+                console.log(`Server backend berjalan di http://localhost:${PORT}`);
+            });
+        }
+    }
+};
+
+startServer();
