@@ -18,7 +18,7 @@ app.use(cors());
 const cache = new Map();
 const CACHE_DURATION_MS = 30 * 60 * 1000; // Cache selama 30 menit
 
-// --- PERUBAHAN: Endpoint untuk Pencarian MissAV ---
+// --- Endpoint untuk Pencarian MissAV ---
 app.get('/api/missav/search', async (req, res) => {
     const { q: query } = req.query;
     if (!query) {
@@ -35,7 +35,8 @@ app.get('/api/missav/search', async (req, res) => {
     console.log(`\nINFO: Tidak ada cache untuk query: "${query}". Memulai scraping MissAV...`);
 
     try {
-        const searchUrl = `https://missav.ws/search/${encodeURIComponent(query)}`;
+        // PERBAIKAN: Menggunakan domain dan URL pencarian yang baru
+        const searchUrl = `https://missav.com/search/${encodeURIComponent(query)}`;
         const { data: searchHtml } = await axios.get(searchUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
         });
@@ -43,10 +44,11 @@ app.get('/api/missav/search', async (req, res) => {
         const $ = cheerio.load(searchHtml);
         const videoPromises = [];
 
-        $('div.thumbnail').slice(0, 20).each((i, element) => {
+        // PERBAIKAN: Menggunakan selector yang diperbarui
+        $('div.grid > div').slice(0, 20).each((i, element) => {
             const linkElement = $(element).find('a');
             const pageUrl = linkElement.attr('href');
-            const title = $(element).find('.video-title').text().trim();
+            const title = $(element).find('div.text-secondary').text().trim();
             const thumbnailUrl = $(element).find('img').attr('data-src');
 
             if (pageUrl && title && thumbnailUrl) {
@@ -54,13 +56,12 @@ app.get('/api/missav/search', async (req, res) => {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
                 }).then(response => {
                     const pageHtml = response.data;
-                    // Cari URL video (seringkali dalam format M3U8) di dalam tag script
-                    const videoUrlMatch = pageHtml.match(/source:\s*'([^']+)'/);
+                    // PERBAIKAN: Mencari URL video (M3U8) di dalam tag script
+                    const videoUrlMatch = pageHtml.match(/player\.src\(\{\s*type:\s*'application\/x-mpegURL',\s*src:\s*'([^']+)'/);
                     if (videoUrlMatch && videoUrlMatch[1]) {
                         return {
                             thumbnailUrl: thumbnailUrl,
                             videoUrl: videoUrlMatch[1],
-                            // Situs ini tidak menyediakan video pratinjau yang mudah diakses
                             previewVideoUrl: null, 
                             title: title
                         };
@@ -90,11 +91,6 @@ app.get('/api/missav/search', async (req, res) => {
             details: error.message
         });
     }
-});
-
-// --- Endpoint untuk Narasi Audio (Tidak Berubah) ---
-app.get('/api/generate-narration', async (req, res) => {
-    // ... (kode narasi tetap sama)
 });
 
 // --- Menjalankan Server ---
