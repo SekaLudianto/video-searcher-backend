@@ -36,7 +36,7 @@ app.get('/api/missav/search', async (req, res) => {
 
     try {
         // PERBAIKAN: Menggunakan domain dan URL pencarian yang baru
-        const searchUrl = `https://missav.com/search/${encodeURIComponent(query)}`;
+        const searchUrl = `https://missav.ws/search/${encodeURIComponent(query)}`;
         const { data: searchHtml } = await axios.get(searchUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
         });
