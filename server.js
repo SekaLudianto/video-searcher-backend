@@ -35,8 +35,8 @@ app.get('/api/missav/search', async (req, res) => {
     console.log(`\nINFO: Tidak ada cache untuk query: "${query}". Memulai scraping MissAV...`);
 
     try {
-        // PERBAIKAN: Menggunakan domain dan URL pencarian yang baru
-        const searchUrl = `https://missav.ws/search/${encodeURIComponent(query)}`;
+        // PERBAIKAN: Menambahkan kode bahasa /id/ ke URL pencarian
+        const searchUrl = `https://missav.ws/id/search/${encodeURIComponent(query)}`;
         const { data: searchHtml } = await axios.get(searchUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
         });
@@ -44,7 +44,7 @@ app.get('/api/missav/search', async (req, res) => {
         const $ = cheerio.load(searchHtml);
         const videoPromises = [];
 
-        // PERBAIKAN: Menggunakan selector yang diperbarui
+        // Menggunakan selector yang diperbarui
         $('div.grid > div').slice(0, 20).each((i, element) => {
             const linkElement = $(element).find('a');
             const pageUrl = linkElement.attr('href');
@@ -56,7 +56,7 @@ app.get('/api/missav/search', async (req, res) => {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
                 }).then(response => {
                     const pageHtml = response.data;
-                    // PERBAIKAN: Mencari URL video (M3U8) di dalam tag script
+                    // Mencari URL video (M3U8) di dalam tag script
                     const videoUrlMatch = pageHtml.match(/player\.src\(\{\s*type:\s*'application\/x-mpegURL',\s*src:\s*'([^']+)'/);
                     if (videoUrlMatch && videoUrlMatch[1]) {
                         return {
