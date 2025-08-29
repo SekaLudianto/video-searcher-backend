@@ -44,33 +44,31 @@ app.get('/api/eporner/search', async (req, res) => {
         const $ = cheerio.load(searchHtml);
         const videoPromises = [];
 
-        // Menggunakan selector untuk Eporner
-        $('div#vid').slice(0, 20).each((i, element) => {
+        // PERBAIKAN: Menggunakan selector baru yang lebih andal untuk container video
+        $('div.mb').slice(0, 20).each((i, element) => {
             const linkElement = $(element).find('a');
             const pageUrl = 'https://www.eporner.com' + linkElement.attr('href');
             const title = $(element).find('p.mbtit').text().trim();
-            const thumbnailUrl = $(element).find('img').attr('data-src');
+            // PERBAIKAN: Mengambil thumbnail dari atribut 'src' bukan 'data-src'
+            const thumbnailUrl = $(element).find('img').attr('src'); 
 
-            if (pageUrl && title && thumbnailUrl) {
+            if (pageUrl && title && thumbnailUrl && !pageUrl.includes('https://www.eporner.com/ad/')) {
                 const videoPromise = axios.get(pageUrl, {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
                 }).then(response => {
                     const pageHtml = response.data;
-                    // Mencari URL video di dalam tag script menggunakan regex
-                    const scriptContentMatch = pageHtml.match(/var\s+flashvars_\d+\s*=\s*({.*?});/s);
-                    if (scriptContentMatch && scriptContentMatch[1]) {
-                        const flashvars = JSON.parse(scriptContentMatch[1]);
-                        // Mencari sumber video dengan kualitas tertinggi
-                        const sources = Object.values(flashvars).find(val => Array.isArray(val) && val[0] && val[0].src);
-                        if(sources && sources.length > 0) {
-                           const videoUrl = sources[sources.length - 1].src; // Ambil kualitas tertinggi
-                            return {
-                                thumbnailUrl: thumbnailUrl,
-                                videoUrl: videoUrl.startsWith('http') ? videoUrl : 'https:' + videoUrl,
-                                previewVideoUrl: null,
-                                title: title
-                            };
-                        }
+                    const page$ = cheerio.load(pageHtml);
+
+                    // PERBAIKAN: Mencari URL video langsung dari tag <source>
+                    const videoUrl = page$('video#player_el > source[type="video/mp4"]').attr('src');
+
+                    if(videoUrl) {
+                        return {
+                            thumbnailUrl: thumbnailUrl,
+                            videoUrl: videoUrl.startsWith('http') ? videoUrl : 'https:' + videoUrl,
+                            previewVideoUrl: null,
+                            title: title
+                        };
                     }
                     return null;
                 }).catch(err => {
@@ -85,6 +83,10 @@ app.get('/api/eporner/search', async (req, res) => {
         const videos = results.filter(v => v !== null);
 
         console.log(`SUKSES: Ditemukan ${videos.length} video dari Eporner.`);
+        
+        if (videos.length === 0) {
+             console.log("PERINGATAN: Tidak ada video yang ditemukan. Struktur situs mungkin telah berubah.");
+        }
 
         const responseData = { videos: videos };
         cache.set(cacheKey, { timestamp: Date.now(), data: responseData });
@@ -124,3 +126,4 @@ const startServer = () => {
 };
 
 startServer();
+
