@@ -18,25 +18,25 @@ app.use(cors());
 const cache = new Map();
 const CACHE_DURATION_MS = 30 * 60 * 1000; // Cache selama 30 menit
 
-// --- Endpoint untuk Pencarian MissAV ---
-app.get('/api/missav/search', async (req, res) => {
+// --- Endpoint untuk Pencarian Eporner ---
+app.get('/api/eporner/search', async (req, res) => {
     const { q: query } = req.query;
     if (!query) {
         return res.status(400).json({ message: 'Query pencarian (q) dibutuhkan' });
     }
 
-    const cacheKey = `missav-${query}`;
+    const cacheKey = `eporner-${query}`;
     const cachedData = cache.get(cacheKey);
     if (cachedData && (Date.now() - cachedData.timestamp < CACHE_DURATION_MS)) {
         console.log(`\nINFO: Mengembalikan hasil untuk query "${query}" dari cache.`);
         return res.json(cachedData.data);
     }
 
-    console.log(`\nINFO: Tidak ada cache untuk query: "${query}". Memulai scraping MissAV...`);
+    console.log(`\nINFO: Tidak ada cache untuk query: "${query}". Memulai scraping Eporner...`);
 
     try {
-        // PERBAIKAN: Menambahkan kode bahasa /id/ ke URL pencarian
-        const searchUrl = `https://missav.ws/id/search/${encodeURIComponent(query)}`;
+        // Menggunakan format URL pencarian Eporner yang benar
+        const searchUrl = `https://www.eporner.com/search/${encodeURIComponent(query)}/`;
         const { data: searchHtml } = await axios.get(searchUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
         });
@@ -44,11 +44,11 @@ app.get('/api/missav/search', async (req, res) => {
         const $ = cheerio.load(searchHtml);
         const videoPromises = [];
 
-        // Menggunakan selector yang diperbarui
-        $('div.grid > div').slice(0, 20).each((i, element) => {
+        // Menggunakan selector untuk Eporner
+        $('div#vid').slice(0, 20).each((i, element) => {
             const linkElement = $(element).find('a');
-            const pageUrl = linkElement.attr('href');
-            const title = $(element).find('div.text-secondary').text().trim();
+            const pageUrl = 'https://www.eporner.com' + linkElement.attr('href');
+            const title = $(element).find('p.mbtit').text().trim();
             const thumbnailUrl = $(element).find('img').attr('data-src');
 
             if (pageUrl && title && thumbnailUrl) {
@@ -56,15 +56,21 @@ app.get('/api/missav/search', async (req, res) => {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
                 }).then(response => {
                     const pageHtml = response.data;
-                    // Mencari URL video (M3U8) di dalam tag script
-                    const videoUrlMatch = pageHtml.match(/player\.src\(\{\s*type:\s*'application\/x-mpegURL',\s*src:\s*'([^']+)'/);
-                    if (videoUrlMatch && videoUrlMatch[1]) {
-                        return {
-                            thumbnailUrl: thumbnailUrl,
-                            videoUrl: videoUrlMatch[1],
-                            previewVideoUrl: null, 
-                            title: title
-                        };
+                    // Mencari URL video di dalam tag script menggunakan regex
+                    const scriptContentMatch = pageHtml.match(/var\s+flashvars_\d+\s*=\s*({.*?});/s);
+                    if (scriptContentMatch && scriptContentMatch[1]) {
+                        const flashvars = JSON.parse(scriptContentMatch[1]);
+                        // Mencari sumber video dengan kualitas tertinggi
+                        const sources = Object.values(flashvars).find(val => Array.isArray(val) && val[0] && val[0].src);
+                        if(sources && sources.length > 0) {
+                           const videoUrl = sources[sources.length - 1].src; // Ambil kualitas tertinggi
+                            return {
+                                thumbnailUrl: thumbnailUrl,
+                                videoUrl: videoUrl.startsWith('http') ? videoUrl : 'https:' + videoUrl,
+                                previewVideoUrl: null,
+                                title: title
+                            };
+                        }
                     }
                     return null;
                 }).catch(err => {
@@ -78,16 +84,16 @@ app.get('/api/missav/search', async (req, res) => {
         const results = await Promise.all(videoPromises);
         const videos = results.filter(v => v !== null);
 
-        console.log(`SUKSES: Ditemukan ${videos.length} video dari MissAV.`);
+        console.log(`SUKSES: Ditemukan ${videos.length} video dari Eporner.`);
 
         const responseData = { videos: videos };
         cache.set(cacheKey, { timestamp: Date.now(), data: responseData });
         res.json(responseData);
 
     } catch (error) {
-        console.error('KRITIS: Terjadi error saat scraping MissAV.', error.message);
+        console.error('KRITIS: Terjadi error saat scraping Eporner.', error.message);
         return res.status(500).json({ 
-            message: 'Gagal mengambil data dari MissAV.',
+            message: 'Gagal mengambil data dari Eporner.',
             details: error.message
         });
     }
