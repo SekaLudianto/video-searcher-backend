@@ -54,27 +54,43 @@ app.get('/api/eporner/search', async (req, res) => {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36' }
                 }).then(response => {
                     const pageHtml = response.data;
-                    
-                    // PERBAIKAN: Kembali menggunakan metode parsing 'flashvars' dari script
-                    const scriptContentMatch = pageHtml.match(/var\s+flashvars_\d+\s*=\s*({.*?});/s);
+                    let videoUrl = null;
+
+                    // PERBAIKAN: Metode baru yang lebih andal untuk mengekstrak URL video
+                    // Mencari variabel 'flashvars' di dalam tag <script>
+                    const scriptContentMatch = pageHtml.match(/var\s+flashvars_\d+\s*=\s*({[\s\S]*?});/);
                     if (scriptContentMatch && scriptContentMatch[1]) {
-                        // Membersihkan string JSON dari kemungkinan komentar atau karakter aneh
-                        const jsonString = scriptContentMatch[1].replace(/(\r\n|\n|\r)/gm, "").replace(/\s+/g, ' ');
-                        const flashvars = JSON.parse(jsonString);
-                        
-                        // Mencari sumber video (biasanya dalam array)
-                        const sources = Object.values(flashvars).find(val => Array.isArray(val) && val[0] && val[0].src);
-                        if(sources && sources.length > 0) {
-                           // Mengambil URL video dengan kualitas tertinggi (biasanya yang terakhir di array)
-                           const videoUrl = sources[sources.length - 1].src;
-                            return {
-                                thumbnailUrl: thumbnailUrl,
-                                videoUrl: videoUrl.startsWith('http') ? videoUrl : 'https:' + videoUrl,
-                                previewVideoUrl: null,
-                                title: title
-                            };
+                        try {
+                            const flashvarsString = scriptContentMatch[1];
+                            // Menggunakan regex untuk mengekstrak semua URL sumber video
+                            const sourcesMatch = flashvarsString.match(/"src"\s*:\s*"([^"]+)"/g);
+                            
+                            if (sourcesMatch && sourcesMatch.length > 0) {
+                                // Mengambil URL terakhir (biasanya kualitas tertinggi)
+                                const lastSource = sourcesMatch[sourcesMatch.length - 1];
+                                const url = lastSource.match(/"src"\s*:\s*"([^"]+)"/)[1];
+                                videoUrl = url.replace(/\\/g, ''); // Membersihkan backslash
+                            }
+                        } catch (e) {
+                            console.error(`Gagal mengekstrak video URL dari flashvars di ${pageUrl}`, e.message);
                         }
                     }
+
+                    // Fallback ke metode lama jika metode baru gagal
+                    if (!videoUrl) {
+                        const page$ = cheerio.load(pageHtml);
+                        videoUrl = page$('video#player_el > source[type="video/mp4"]').attr('src');
+                    }
+
+                    if (videoUrl) {
+                         return {
+                            thumbnailUrl: thumbnailUrl,
+                            videoUrl: videoUrl.startsWith('http') ? videoUrl : 'https:' + videoUrl,
+                            previewVideoUrl: null,
+                            title: title
+                        };
+                    }
+
                     return null;
                 }).catch(err => {
                     console.error(`Gagal mengambil detail dari ${pageUrl}:`, err.message);
